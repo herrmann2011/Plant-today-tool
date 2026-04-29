@@ -414,6 +414,20 @@
   .why-list li.cau .ico { color: var(--caution); }
   .why-list li.no .ico { color: var(--bad); }
 
+  /* Field-conditions disclaimer at the bottom of the today block */
+  .today-disclaimer {
+    margin-top: 18px;
+    padding: 10px 14px;
+    background: var(--bg-deep);
+    border-left: 3px solid var(--caution);
+    border-radius: 2px;
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    line-height: 1.5;
+  }
+
   /* HERO STATS — accumulated GDU & rainfall */
   .hero-stats {
     display: grid;
@@ -518,6 +532,16 @@
     width: 3px;
     background: var(--ink);
     box-shadow: 0 0 0 1.5px var(--paper);
+    transform: translateX(-1.5px);
+  }
+  .wb-marker-corn { background: var(--corn-deep); }
+  .wb-marker-soy { background: var(--soy-deep); }
+  .wb-cropchip {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
   }
   .wb-axis {
     display: flex;
@@ -573,6 +597,7 @@
   }
   .legend .chip.gdu-hist { color: var(--corn-deep); }
   .legend .chip.gdu-fcst { color: var(--accent); }
+  .legend .chip.gdu-normal { color: var(--ink-faint); }
   .legend .chip.rain-hist { color: var(--rain); }
   .legend .chip.rain-fcst { color: var(--rain-fcst); }
 
@@ -663,7 +688,9 @@
 
   <!-- FOOTNOTE -->
   <div class="footnote" id="footnote" style="display:none;">
-    <b>How this is calculated.</b> Plant-date yield curve is from University of Illinois trials (Nafziger et al., 2007–2024) covering &gt;20 years across central and northern IL, calibrated against 2025 farm-level results from the central Illinois region the tool serves. Soil-temperature thresholds and imbibitional-chilling guidance follow Iowa State, UNL CropWatch, and Peterson Ag agronomy bulletins. GDU uses base 50 °F / cap 86 °F. The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>.
+    <b>How this is calculated.</b> The plant-date yield curve blends two sources, weighted 65% / 35%. The primary source is the published University of Illinois Nafziger trials — 22 site-years of corn (2007–2021) and 26 site-years of soybeans (2010–2020), reported in Farmdoc Daily. Anchor benchmarks: <i>May 10 ≈ 95%, May 20 ≈ 91%, May 30 ≈ 86% of maximum yield</i>, with peak in mid-to-late April. The secondary source is a local 1,300+ field central-Illinois dataset (2023–2025), which sharpens the recent shape of the curve, especially the corn plateau through mid-May. The published trials get the larger weight because they cover 20+ years of weather variability — far longer than the three-year local sample. Soil-temperature thresholds and imbibitional-chilling guidance follow Iowa State, UNL CropWatch, and Peterson Ag agronomy bulletins. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>.
+    <br><br>
+    <b>Field conditions are not factored into the recommendation.</b> Weather-based models can't reliably predict whether a particular field is fit to plant — soil type, drainage, tile, residue cover, slope, and recent foot/tire traffic all matter, and none of that is visible in a forecast. Walk your fields and trust your boots; this tool tells you whether the agronomic and calendar windows are open, not whether the dirt is ready.
   </div>
 </div>
 
@@ -691,46 +718,66 @@
   const FROST_MAX_F     = 32;      // any forecast min ≤ 32 = frost flag
 
   // ============ YIELD CURVE ============
-  // Calibrated piecewise-linear curve. Anchored to:
-  //   • Nafziger Illinois trials 2007-2021 (Apr 10-30 = 99-100%, May 7=97%, May 15=94%, May 25=87%, Jun 5=80%, Jun 15=70%)
-  //   • Reconciled with 482-field 2025 data from the user's central IL region:
-  //       corn  peak Apr 20-24 (100%), >96% through May 14, drops to 82% May 15-19
-  //       soy   peak Apr 8-14  (100%), >93% through Apr 29, ~85-89% May 5-19, ~76% late May+
-  //   • Crop-specific: corn tolerates a slightly later peak; soy peaks earlier.
+  // BLENDED from two sources, 65% published / 35% local:
+  //
+  // [1] Published University of Illinois Nafziger trials (Farmdoc, 2022):
+  //     Corn: 22 site-years across 4 central/northern IL sites, 2007-2021
+  //     Soy:  26 site-years across 6 IL sites, 2010-2020
+  //     Anchor benchmarks (% of max yield): May 10 = 95%, May 20 = 91%, May 30 = 86%
+  //     Plus the 1994 Nafziger quadratic model: peak ~Apr 27, very flat-topped curve
+  //
+  // [2] Local farm-level dataset: 1,300+ central-IL fields, 2023-2025
+  //     (5-day rolling weighted-average yield by plant date, monotonized)
+  //
+  // The published trials get the larger weight because they cover 20+ years of
+  // weather variability — far longer than our local 3-year sample. The local
+  // data sharpens the recent shape, especially the corn plateau through May 14.
+  //
   // Returned as % of max yield potential.
   function yieldPotential(date, crop) {
     const doy = dayOfYear(date);
     const curve = (crop === 'soy')
-      // SOY: peaks early, declines steadily
+      // SOY anchors (DOY, % of max)
       ? [
-          [98,  98],   // Apr 8
-          [105, 100],  // Apr 15  ← peak
-          [112, 97],   // Apr 22
-          [119, 94],   // Apr 29
-          [126, 91],   // May 6
-          [133, 87],   // May 13
-          [140, 82],   // May 20
-          [147, 76],   // May 27
-          [154, 70],   // Jun 3
-          [165, 60],   // Jun 14
-          [180, 45]    // Jun 29
+          [93, 99],    // Apr 2
+          [97, 100],   // Apr 6/7   ← peak
+          [102, 98],   // Apr 11
+          [107, 97],   // Apr 16
+          [112, 96],   // Apr 21
+          [117, 94],   // Apr 26
+          [122, 93],   // May 1
+          [127, 91],   // May 6
+          [132, 89],   // May 11
+          [137, 88],   // May 16
+          [142, 86],   // May 21
+          [147, 82],   // May 26
+          [152, 76],   // May 31
+          [159, 70],   // Jun 7
+          [170, 60],   // Jun 18
+          [185, 50]    // Jul 3
         ]
-      // CORN: flat-topped Apr-early-May, sharper drop after May 15
+      // CORN anchors (DOY, % of max)
       : [
-          [98,  92],   // Apr 8
-          [105, 99],   // Apr 15
-          [114, 100],  // Apr 24  ← peak
-          [126, 97],   // May 6
-          [133, 94],   // May 13
-          [140, 87],   // May 20
-          [147, 80],   // May 27
-          [156, 70],   // Jun 5
-          [166, 60],   // Jun 15
-          [180, 45]    // Jun 29
+          [95, 98],    // Apr 4
+          [100, 98],   // Apr 9
+          [105, 99],   // Apr 14
+          [110, 100],  // Apr 19  ← peak
+          [115, 99],   // Apr 24
+          [117, 99],   // Apr 26
+          [120, 98],   // Apr 29
+          [125, 97],   // May 4
+          [130, 95],   // May 9   ← published anchor: May 10 = 95%
+          [134, 93],   // May 13
+          [137, 93],   // May 16
+          [140, 92],   // May 19  ← published anchor: May 20 = 91%
+          [145, 91],   // May 24
+          [150, 86],   // May 29  ← published anchor: May 30 = 86%
+          [156, 78],   // Jun 4
+          [166, 70],   // Jun 14
+          [180, 55]    // Jun 28
         ];
 
-    // before window: assume ~85% (research: very early planting carries risk, no upside)
-    if (doy < curve[0][0]) return 88;
+    if (doy < curve[0][0]) return curve[0][1] - 4;  // pre-window: small penalty
     if (doy >= curve[curve.length - 1][0]) return curve[curve.length - 1][1];
     for (let i = 0; i < curve.length - 1; i++) {
       const [d0, p0] = curve[i];
@@ -744,13 +791,13 @@
   }
 
   function yieldPhrase(pct) {
-    if (pct >= 99) return 'in the optimal window';
-    if (pct >= 96) return 'near optimum';
-    if (pct >= 92) return 'still a strong window';
-    if (pct >= 86) return 'modest yield penalty starting';
+    if (pct >= 98) return 'peak window';
+    if (pct >= 95) return 'still on the plateau';
+    if (pct >= 90) return 'near optimum';
+    if (pct >= 85) return 'modest yield penalty';
     if (pct >= 78) return 'meaningful yield penalty';
     if (pct >= 65) return 'significant yield penalty';
-    return 'late — plan for shorter-maturity seed';
+    return 'late — switch to shorter-maturity seed';
   }
 
   // ============ DOM ============
@@ -861,29 +908,85 @@
 
   // ============ WEATHER FETCH ============
   // Fetch:
-  //  • last 30 days of observed (for accumulated-GDU / soil context)
+  //  • last 30 days of observed (for accumulated-GDU / soil context / antecedent rainfall)
   //  • next 7 days forecast
+  //  • daily wind / radiation / ET / soil-moisture for field-workability index
   async function fetchWeather(loc) {
     const today = todayUTC();
     const histStart = new Date(today.getTime() - 30 * 86400000);
-    const fcstEnd = new Date(today.getTime() + 7 * 86400000);
 
     const histUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lon}` +
       `&start_date=${isoFromUTC(histStart)}&end_date=${isoFromUTC(new Date(today.getTime() - 86400000))}` +
-      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,soil_temperature_0_to_7cm_mean` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,soil_temperature_0_to_7cm_mean,et0_fao_evapotranspiration` +
       `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=${encodeURIComponent(loc.tz)}`;
 
     const fcstUrl = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
-      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
-      `&hourly=soil_temperature_6cm,precipitation,temperature_2m` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,shortwave_radiation_sum,et0_fao_evapotranspiration` +
+      `&hourly=soil_temperature_6cm,soil_moisture_3_to_9cm,precipitation,temperature_2m` +
       `&past_days=2&forecast_days=8` +
-      `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=${encodeURIComponent(loc.tz)}`;
+      `&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=${encodeURIComponent(loc.tz)}`;
 
     const [hist, fcst] = await Promise.all([
       fetch(histUrl).then(r => r.ok ? r.json() : Promise.reject('archive fetch failed')),
       fetch(fcstUrl).then(r => r.ok ? r.json() : Promise.reject('forecast fetch failed'))
     ]);
+
+    // Also fetch 10-year normal GDU for the chart overlay (in parallel won't help — start it now)
+    // We'll let render() request this lazily so first paint is fast.
     return { hist, fcst, today };
+  }
+
+  // Fetch a 10-year normal GDU climatology for this lat/lon, covering Apr 1 -> end of next 7 days.
+  // Uses Open-Meteo archive API and averages the same calendar dates from the previous 10 years.
+  async function fetchNormalGDU(loc, today, fcstEndISO) {
+    const yearNow = today.getUTCFullYear();
+    const startMD = '04-01';
+    // Determine end MM-DD from fcstEndISO (e.g. "2026-05-06")
+    const endMD = fcstEndISO.slice(5);
+
+    // Fetch 10 prior years in parallel
+    const years = [];
+    for (let y = yearNow - 10; y < yearNow; y++) years.push(y);
+    const urls = years.map(y =>
+      `https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lon}` +
+      `&start_date=${y}-${startMD}&end_date=${y}-${endMD}` +
+      `&daily=temperature_2m_max,temperature_2m_min` +
+      `&temperature_unit=fahrenheit&timezone=${encodeURIComponent(loc.tz)}`
+    );
+    let results;
+    try {
+      results = await Promise.all(urls.map(u =>
+        fetch(u).then(r => r.ok ? r.json() : null).catch(() => null)
+      ));
+    } catch (e) {
+      return null;
+    }
+    // For each calendar day (MM-DD), average the GDU across years
+    const dayGdus = {}; // MM-DD -> [gdu values]
+    for (const r of results) {
+      if (!r || !r.daily || !r.daily.time) continue;
+      for (let i = 0; i < r.daily.time.length; i++) {
+        const md = r.daily.time[i].slice(5);
+        const g = gduFromHL(r.daily.temperature_2m_max[i], r.daily.temperature_2m_min[i]);
+        if (g == null) continue;
+        if (!dayGdus[md]) dayGdus[md] = [];
+        dayGdus[md].push(g);
+      }
+    }
+    // Build cumulative for current year date range
+    const out = [];
+    let cum = 0;
+    const startD = new Date(`${yearNow}-${startMD}T12:00:00Z`);
+    const endD = new Date(`${yearNow}-${endMD}T12:00:00Z`);
+    for (let d = new Date(startD); d <= endD; d = new Date(d.getTime() + 86400000)) {
+      const md = isoFromUTC(d).slice(5);
+      const arr = dayGdus[md];
+      if (arr && arr.length) {
+        cum += arr.reduce((a, b) => a + b, 0) / arr.length;
+      }
+      out.push({ date: isoFromUTC(d), cumGDU: cum });
+    }
+    return { years: years, days: out };
   }
 
   // ============ DAY-LEVEL ANALYSIS ============
@@ -894,7 +997,7 @@
   //   - Yield potential (calendar)
   //   - Frost risk in next 14 days for early seedlings
   // Then combine into a light: go / cau / no
-  function analyzeDay(dayIdx, fcstDays, hourly, today) {
+  function analyzeDay(dayIdx, fcstDays, hourly, today, histDays, weather) {
     const day = fcstDays[dayIdx];
     if (!day || day.tmax == null || day.tmin == null) return null;
 
@@ -933,13 +1036,16 @@
     const yieldPctCorn = yieldPotential(day.dateObj, 'corn');
     const yieldPctSoy  = yieldPotential(day.dateObj, 'soy');
 
+    // ===== FIELD WORKABILITY (modeled, not measured) =====
+    const work = computeWorkability(dayIdx, fcstDays, histDays, hourly, day, weather);
+
     // ===== LIGHT LOGIC per crop =====
     const lights = {};
     for (const crop of ['corn', 'soy']) {
       const emergeDays = crop === 'corn' ? cornDays : soyDays;
       const yieldPct = crop === 'corn' ? yieldPctCorn : yieldPctSoy;
       lights[crop] = computeLight({
-        soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop
+        soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
       });
     }
 
@@ -953,11 +1059,23 @@
       rain48, coldestPost, frostAhead,
       cornDays, soyDays,
       yieldPctCorn, yieldPctSoy,
+      work,
       lights
     };
   }
 
-  function computeLight({ soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, crop }) {
+  // Field workability is intentionally NOT modeled in this tool.
+  // Earlier versions tried a water-balance score, but it was not accurate enough
+  // to be useful — the model can't know your soil type, drainage, tile, residue,
+  // or where the back-40 always lays wet. The disclaimer in the footnote covers
+  // this. Returning null causes downstream code to skip workability entirely.
+  function computeWorkability() {
+    return null;
+  }
+
+  // Pull ET0 (mm) for a specific date from the historical archive response,
+  // converted to inches. Returns null if not present.
+  function computeLight({ soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
     const reasons = [];
 
     // ---- HARD STOPS (no-go) ----
@@ -966,7 +1084,7 @@
       return { light: 'no', reasons: [['no', `Soil ${Math.round(soilOnDay)}°F + ${rain48.toFixed(2)}″ cold rain in 48h — imbibitional chilling risk is the seed killer here`]] };
     }
     // Yield potential collapsed (very late)
-    if (yieldPct < 70) {
+    if (yieldPct < 60) {
       reasons.push(['no', `${Math.round(yieldPct)}% of yield ceiling — very late, switch to a shorter-maturity hybrid if planting`]);
     }
 
@@ -1009,13 +1127,15 @@
     }
 
     // ---- YIELD POTENTIAL ----
-    if (yieldPct >= 99) {
-      reasons.push(['go', `${Math.round(yieldPct)}% yield-potential ceiling — calendar is on your side`]);
+    if (yieldPct >= 98) {
+      reasons.push(['go', `${Math.round(yieldPct)}% yield-potential ceiling — peak window`]);
     } else if (yieldPct >= 92) {
-      reasons.push(['go', `${Math.round(yieldPct)}% yield-potential ceiling — still a strong window`]);
-    } else if (yieldPct >= 80) {
-      reasons.push(['cau', `${Math.round(yieldPct)}% yield-potential ceiling — penalty is becoming meaningful`]);
-    } else if (yieldPct >= 70) {
+      reasons.push(['go', `${Math.round(yieldPct)}% yield-potential ceiling — still on the plateau`]);
+    } else if (yieldPct >= 85) {
+      reasons.push(['cau', `${Math.round(yieldPct)}% yield-potential ceiling — modest penalty starting`]);
+    } else if (yieldPct >= 75) {
+      reasons.push(['cau', `${Math.round(yieldPct)}% yield-potential ceiling — meaningful late-planting penalty`]);
+    } else {
       reasons.push(['no', `${Math.round(yieldPct)}% yield ceiling — significant late-planting penalty`]);
     }
 
@@ -1083,18 +1203,23 @@
     const { fcst, today } = weather;
     const todayISO = isoFromUTC(today);
     const days = [];
-    for (let i = 0; i < fcst.daily.time.length; i++) {
-      const iso = fcst.daily.time[i];
+    const daily = fcst.daily;
+    for (let i = 0; i < daily.time.length; i++) {
+      const iso = daily.time[i];
       // Only future days from today onwards (not "past_days" buffer)
       if (iso < todayISO) continue;
-      const tmax = fcst.daily.temperature_2m_max[i];
-      const tmin = fcst.daily.temperature_2m_min[i];
-      const precip = fcst.daily.precipitation_sum[i] ?? 0;
+      const tmax = daily.temperature_2m_max[i];
+      const tmin = daily.temperature_2m_min[i];
+      const precip = daily.precipitation_sum[i] ?? 0;
+      const wind = daily.wind_speed_10m_max ? daily.wind_speed_10m_max[i] : null;
+      const swrad = daily.shortwave_radiation_sum ? daily.shortwave_radiation_sum[i] : null;
+      const et0 = daily.et0_fao_evapotranspiration ? daily.et0_fao_evapotranspiration[i] : null;
       const dt = new Date(iso + 'T12:00:00Z');
       days.push({
         date: iso,
         dateObj: dt,
         tmax, tmin, precip,
+        wind, swrad, et0,
         gdu: gduFromHL(tmax, tmin)
       });
       if (days.length >= 7) break;
@@ -1176,8 +1301,22 @@
     };
   }
 
+  // Look up what the 10-yr normal cumulative GDU SHOULD be by yesterday's date
+  // (so it can be compared against this year's accumulated through yesterday).
+  function computeNormalToToday(normalGdu, today) {
+    if (!normalGdu || !normalGdu.days) return null;
+    const yesterday = new Date(today.getTime() - 86400000);
+    const targetISO = isoFromUTC(yesterday);
+    let last = null;
+    for (const d of normalGdu.days) {
+      if (d.date <= targetISO) last = d;
+      else break;
+    }
+    return last ? Math.round(last.cumGDU) : null;
+  }
+
   // ============ RENDER ============
-  function render(weather) {
+  function render(weather, normalGdu) {
     const fcstDays = buildFcstDays(weather);
     const hourly = weather.fcst.hourly;
     const today = weather.today;
@@ -1187,8 +1326,11 @@
       return;
     }
 
-    // Analyze each day
-    const analysis = fcstDays.map((_, i) => analyzeDay(i, fcstDays, hourly, today)).filter(Boolean);
+    // Season stats (built first so analyzeDay can use histDays for workability)
+    const stats = buildSeasonStats(weather, fcstDays);
+
+    // Analyze each day (passing histDays for antecedent-rain / workability calc)
+    const analysis = fcstDays.map((_, i) => analyzeDay(i, fcstDays, hourly, today, stats.histDays, weather)).filter(Boolean);
     const todayA = analysis[0];
 
     // Find best day in next 7 for each crop
@@ -1223,8 +1365,8 @@
     // Headline
     const headlineMap = {
       go:  { text: 'Yes — go.', detail: 'Conditions today line up across the calendar, the soil, and the next 48 hours.' },
-      cau: { text: 'It depends.', detail: 'Some signals are green, others are mixed. Read the breakdown — and check this week\'s outlook below; a better day is often a few days away.' },
-      no:  { text: 'Hold the planter.', detail: 'At least one factor today carries real seed risk. The forecast usually gives you a better window within a few days.' }
+      cau: { text: 'It depends.', detail: 'Some signals are green, others are mixed. Check the breakdown below — and look at the week-ahead strip to see when conditions clean up.' },
+      no:  { text: 'Hold the planter.', detail: 'At least one factor today carries real seed risk. Check the week-ahead strip below — most weeks have a better window inside seven days.' }
     };
     // Refined detail when corn ≠ soy
     let refinedDetail = headlineMap[overall].detail;
@@ -1234,9 +1376,9 @@
       if (goCrop && noCrop) {
         refinedDetail = `${cap(goCrop)} is a green light today; ${noCrop} carries real risk. Run the planter on one, hold on the other.`;
       } else if (goCrop) {
-        refinedDetail = `${cap(goCrop)} is clear to go; the other is mixed — see the breakdown.`;
+        refinedDetail = `${cap(goCrop)} is clear to go; the other crop has mixed signals — see the breakdown below.`;
       } else if (noCrop) {
-        refinedDetail = `${cap(noCrop)} carries real risk today. The other is mixed — see the breakdown.`;
+        refinedDetail = `${cap(noCrop)} carries real risk today; the other crop has mixed signals. See the breakdown below.`;
       }
     }
 
@@ -1251,21 +1393,38 @@
         <p class="today-summary">${refinedDetail}</p>
 
         <div class="today-split">
-          ${renderCropBox('corn', 'Corn', todayA, bestCorn)}
-          ${renderCropBox('soy', 'Soybeans', todayA, bestSoy)}
+          ${renderCropBox('corn', 'Corn', todayA, bestCorn, analysis)}
+          ${renderCropBox('soy', 'Soybeans', todayA, bestSoy, analysis)}
         </div>
 
         ${renderWhy(todayA)}
+
+        <div class="today-disclaimer">Field conditions not factored in — walk your fields before pulling the planter.</div>
       </div>
     </section>`;
 
     // ----- HERO STATS — accumulated GDU & rainfall -----
-    const stats = buildSeasonStats(weather, fcstDays);
+    // Compare current GDU to the 10-year normal for the same period
+    const normalToToday = computeNormalToToday(normalGdu, today);
+    const gduVsNormal = (normalToToday != null && stats.gduSeason != null)
+      ? Math.round(stats.gduSeason - normalToToday) : null;
+    const gduVsNormalPct = (normalToToday != null && normalToToday > 0)
+      ? Math.round((stats.gduSeason / normalToToday - 1) * 100) : null;
+
+    let gduSubText = `${stats.daysObserved} day${stats.daysObserved === 1 ? '' : 's'} observed`;
+    if (gduVsNormal != null) {
+      const sign = gduVsNormal >= 0 ? '+' : '';
+      const direction = gduVsNormal > 0 ? 'ahead' : 'behind';
+      gduSubText = gduVsNormal === 0
+        ? `on pace with 10-yr normal`
+        : `${sign}${gduVsNormal} vs 10-yr normal · ${Math.abs(gduVsNormalPct)}% ${direction}`;
+    }
+
     html += `<div class="hero-stats">
       <div class="stat gdu">
         <div class="label">Accumulated GDU · since Apr 1</div>
         <div class="value">${stats.gduSeason}<span class="unit">GDU</span></div>
-        <div class="sub">${stats.daysObserved} day${stats.daysObserved === 1 ? '' : 's'} observed${stats.recentPace > 0 ? ` · ${stats.recentPace}/day recent pace` : ''}</div>
+        <div class="sub">${gduSubText}</div>
       </div>
       <div class="stat rain">
         <div class="label">Accumulated rainfall · since Apr 1</div>
@@ -1306,15 +1465,16 @@
     html += `<div class="section-head">
       <span class="num">03</span>
       <h2>Season to date</h2>
-      <span class="sub">GDU accumulation + daily rainfall since Apr 1</span>
+      <span class="sub">This year vs the 10-year normal · since Apr 1</span>
     </div>`;
     html += `<div class="legend">
-      <span class="chip gdu-hist"><span class="swatch"></span>Cumulative GDU (observed)</span>
-      <span class="chip gdu-fcst"><span class="swatch dashed"></span>Cumulative GDU (forecast)</span>
+      <span class="chip gdu-hist"><span class="swatch"></span>GDU this year (observed)</span>
+      <span class="chip gdu-fcst"><span class="swatch dashed"></span>GDU this year (forecast)</span>
+      <span class="chip gdu-normal"><span class="swatch dashed"></span>10-yr normal GDU</span>
       <span class="chip rain-hist"><span class="swatch bar"></span>Daily rainfall (observed)</span>
       <span class="chip rain-fcst"><span class="swatch bar" style="opacity:0.55;"></span>Daily rainfall (forecast)</span>
     </div>`;
-    html += `<div class="chart-wrap">${renderComboChart(stats.histDays, stats.fcstSeries)}</div>`;
+    html += `<div class="chart-wrap">${renderComboChart(stats.histDays, stats.fcstSeries, normalGdu)}</div>`;
 
     outputEl.innerHTML = html;
     footnoteEl.style.display = 'block';
@@ -1322,21 +1482,42 @@
 
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-  function renderCropBox(kind, label, todayA, bestDay) {
+  function renderCropBox(kind, label, todayA, bestDay, allAnalysis) {
     const lt = todayA.lights[kind].light;
-    const isBestToday = bestDay && bestDay.index === 0;
     const ltLabel = lt === 'go' ? 'Go' : (lt === 'cau' ? 'Mixed' : 'Hold');
-    let bestLine;
-    if (isBestToday) {
-      bestLine = `Today is the best day in the week.`;
-    } else if (bestDay) {
-      const bL = bestDay.lights[kind].light;
-      const verb = bL === 'go' ? 'Best window:' : (bL === 'cau' ? 'Best of the week:' : 'Least bad day:');
-      bestLine = `${verb} <b>${fmtWeekday(bestDay.dateObj)} ${fmtShortDate(bestDay.dateObj)}</b>`;
-    } else {
-      bestLine = '';
-    }
     const yPct = kind === 'corn' ? todayA.yieldPctCorn : todayA.yieldPctSoy;
+
+    // Build the secondary line about best day in week
+    let bestLine = '';
+    if (bestDay) {
+      const bL = bestDay.lights[kind].light;
+      const isToday = bestDay.index === 0;
+
+      // Count how many days this week have a "go" for this crop
+      const goCount = allAnalysis.filter(d => d.lights[kind].light === 'go').length;
+
+      if (lt === 'go' && isToday) {
+        // Today is go, today is best — find next "go" day after today (if any)
+        const nextGo = allAnalysis.find(d => d.index > 0 && d.lights[kind].light === 'go');
+        if (nextGo) {
+          bestLine = `Window stays open through <b>${fmtWeekday(nextGo.dateObj)}</b>.`;
+        } else {
+          bestLine = `This window is today only — tomorrow's outlook tightens.`;
+        }
+      } else if (lt === 'go' && !isToday) {
+        // Today go, but a different day is "best" - that means another go day exists
+        bestLine = `Window stays open through at least <b>${fmtWeekday(bestDay.dateObj)} ${fmtShortDate(bestDay.dateObj)}</b>.`;
+      } else if (bL === 'go') {
+        // Today is mixed/hold but a real go day exists this week
+        bestLine = `Wait — clean window opens <b>${fmtWeekday(bestDay.dateObj)} ${fmtShortDate(bestDay.dateObj)}</b>.`;
+      } else if (bL === 'cau') {
+        // No go this week, best is mixed
+        bestLine = `No clean window this week. Best chance: <b>${fmtWeekday(bestDay.dateObj)} ${fmtShortDate(bestDay.dateObj)}</b>.`;
+      } else {
+        // Whole week is hold
+        bestLine = `Every day this week shows real risk. Watch the next forecast cycle.`;
+      }
+    }
 
     return `<div class="crop-box ${kind}">
       <div class="label">${label}</div>
@@ -1377,23 +1558,23 @@
   }
 
   function renderWindowBar(dateObj, yC, yS) {
-    // Use the higher of the two crop ceilings to position marker (closer-to-best signal)
-    const pct = Math.max(yC, yS);
-    const fillW = Math.max(0, Math.min(100, pct));
+    const fillC = Math.max(0, Math.min(100, yC));
+    const fillS = Math.max(0, Math.min(100, yS));
     return `<div class="window-bar">
       <div class="wb-head">
         <div class="wb-title">Yield-potential calendar · ${fmtShortDate(dateObj)}</div>
-        <div class="wb-value">Corn <b>${Math.round(yC)}%</b> · Soy <b>${Math.round(yS)}%</b> of max</div>
+        <div class="wb-value"><span class="wb-cropchip" style="background:var(--corn);"></span>Corn <b>${Math.round(yC)}%</b> · <span class="wb-cropchip" style="background:var(--soy);"></span>Soy <b>${Math.round(yS)}%</b> of max</div>
       </div>
       <div class="wb-track">
-        <div class="wb-marker" style="left:${fillW}%;"></div>
+        <div class="wb-marker wb-marker-corn" style="left:${fillC}%;" title="Corn ${Math.round(yC)}%"></div>
+        <div class="wb-marker wb-marker-soy" style="left:${fillS}%;" title="Soy ${Math.round(yS)}%"></div>
       </div>
       <div class="wb-axis">
-        <span>Apr 15 · 100%</span>
-        <span>May 7 · 97%</span>
-        <span>May 20 · 87%</span>
-        <span>Jun 5 · 78%</span>
-        <span>Jun 20 · 60%</span>
+        <span>peak · 100%</span>
+        <span>95%</span>
+        <span>plateau · 90%</span>
+        <span>penalty · 80%</span>
+        <span>late · 60%</span>
       </div>
     </div>`;
   }
@@ -1435,7 +1616,7 @@
   // Cumulative GDU as a line (gold = observed, green-dashed = forecast)
   // Daily rainfall as bars (steel blue = observed, lighter blue/dashed = forecast)
   // Dual-axis: left = GDU, right = inches
-  function renderComboChart(histDays, fcstSeries) {
+  function renderComboChart(histDays, fcstSeries, normalGdu) {
     const all = [...histDays, ...fcstSeries];
     if (all.length === 0) return '<p style="font-family:\'IBM Plex Mono\',monospace;color:var(--ink-faint);font-size:0.8rem;">No data yet — chart will populate once observations begin.</p>';
 
@@ -1444,7 +1625,22 @@
     const plotW = W - pad.l - pad.r;
     const plotH = H - pad.t - pad.b;
 
-    const maxCumGDU = Math.max(...all.map(d => d.cumGDU || 0), 1);
+    // Index normal GDU values by date for lookup
+    const normalByDate = {};
+    if (normalGdu && normalGdu.days) {
+      for (const d of normalGdu.days) normalByDate[d.date] = d.cumGDU;
+    }
+
+    // Y-axis range must accommodate both this-year cum AND normal cum (which extends through fcst)
+    const allCumGdus = all.map(d => d.cumGDU || 0);
+    if (normalGdu && normalGdu.days) {
+      // Only consider normal values up through the last fcst date (where chart ends)
+      const lastDate = all.length ? all[all.length - 1].date : null;
+      for (const d of normalGdu.days) {
+        if (lastDate && d.date <= lastDate) allCumGdus.push(d.cumGDU || 0);
+      }
+    }
+    const maxCumGDU = Math.max(...allCumGdus, 1);
     const yMaxLeft = Math.ceil(maxCumGDU / 100) * 100 || 100;
 
     const maxCumRain = Math.max(...all.map(d => d.cumRain || 0), 0.5);
@@ -1501,6 +1697,16 @@
       }
     });
 
+    // 10-yr normal GDU line — anchored to the same x-axis as `all`
+    let normalPts = '';
+    if (Object.keys(normalByDate).length) {
+      all.forEach((d, i) => {
+        const v = normalByDate[d.date];
+        if (v == null) return;
+        normalPts += (normalPts === '' ? 'M' : ' L') + xCenter(i) + ',' + yL(v);
+      });
+    }
+
     // Cumulative GDU line — observed (solid gold)
     const histPts = histDays.map((d, i) => `${i === 0 ? 'M' : 'L'}${xCenter(i)},${yL(d.cumGDU)}`).join(' ');
     // Bridge from last observed to first forecast
@@ -1534,6 +1740,7 @@
       ${yTicks}
       ${rainBars}
       <path d="${rainCumPts}" fill="none" stroke="#3a6b8a" stroke-width="1.5" stroke-dasharray="2,2" opacity="0.55"/>
+      ${normalPts ? `<path d="${normalPts}" fill="none" stroke="#8a907b" stroke-width="1.8" stroke-dasharray="3,3" opacity="0.8"/>` : ''}
       <path d="${histPts}" fill="none" stroke="#8c6f1f" stroke-width="2.5" stroke-linejoin="round"/>
       ${bridgePath ? `<path d="${bridgePath}" fill="none" stroke="#8c6f1f" stroke-width="2" stroke-dasharray="3,3" opacity="0.6"/>` : ''}
       <path d="${fcstPts}" fill="none" stroke="#658647" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="6,3"/>
@@ -1551,9 +1758,27 @@
     locNameEl.textContent = currentLoc.name;
     try {
       const w = await fetchWeather(currentLoc);
-      render(w);
+      // First paint with no normal yet (fast)
+      render(w, null);
       lastUpdateEl.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
       statusTextEl.textContent = 'Live';
+
+      // Then fetch the 10-year normal in background and re-render once available
+      // (this is 10 archive calls in parallel — typically 1-2 seconds)
+      const fcstDays = buildFcstDays(w);
+      if (fcstDays.length) {
+        const fcstEndISO = fcstDays[fcstDays.length - 1].date;
+        try {
+          const normal = await fetchNormalGDU(currentLoc, w.today, fcstEndISO);
+          if (normal && normal.days && normal.days.length) {
+            render(w, normal);
+            lastUpdateEl.textContent = `Updated ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+          }
+        } catch (e) {
+          // Normal GDU fetch failed — that's OK, leave the first render as-is
+          console.warn('Normal GDU fetch failed:', e);
+        }
+      }
     } catch (e) {
       console.error(e);
       outputEl.innerHTML = `<div class="status-msg error">Could not load weather. Check the location and try again.<br><span style="font-size:0.8rem;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace;">${e.message || e}</span></div>`;
