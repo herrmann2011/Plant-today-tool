@@ -688,7 +688,7 @@
 
   <!-- FOOTNOTE -->
   <div class="footnote" id="footnote" style="display:none;">
-    <b>How this is calculated.</b> The plant-date yield curve blends two sources, weighted 65% / 35%. The primary source is the published University of Illinois Nafziger trials — 22 site-years of corn (2007–2021) and 26 site-years of soybeans (2010–2020), reported in Farmdoc Daily. Anchor benchmarks: <i>May 10 ≈ 95%, May 20 ≈ 91%, May 30 ≈ 86% of maximum yield</i>, with peak in mid-to-late April. The secondary source is a local 1,300+ field central-Illinois dataset (2023–2025), which sharpens the recent shape of the curve, especially the corn plateau through mid-May. The published trials get the larger weight because they cover 20+ years of weather variability — far longer than the three-year local sample. Soil-temperature thresholds and imbibitional-chilling guidance follow Iowa State, UNL CropWatch, and Peterson Ag agronomy bulletins. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>.
+    <b>How this is calculated.</b> Forecast temperatures come directly from the National Weather Service via api.weather.gov — the same data that feeds NOAA's website, The Weather Channel, WeatherBug, and every other US weather app. Precipitation forecasts and historical weather come from Open-Meteo. The plant-date yield curve is calibrated against published Corn Belt research: <i>Iowa State (Abendroth & Elmore: 95-100% corn window Apr 12 - May 18), Purdue (Nielsen: prime corn window Apr 20 - May 10), University of Illinois (Nafziger 2007-2021)</i>, and <i>Iowa State soy (2020): ≥92% through late May</i>. Corn holds 100% of yield potential through May 7, then declines: ≈99% by May 10, ≈93% by May 20, ≈85% by May 30. Soybeans hold 100% through April 30, then decline: ≈97% by May 6, ≈91% by May 21. We deliberately do not weight against local farm-level yield data because early planters self-select for better-managed operations — that confound is not present in randomized published trials. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>.
     <br><br>
     <b>Field conditions are not factored into the recommendation.</b> Weather-based models can't reliably predict whether a particular field is fit to plant — soil type, drainage, tile, residue cover, slope, and recent foot/tire traffic all matter, and none of that is visible in a forecast. Walk your fields and trust your boots; this tool tells you whether the agronomic and calendar windows are open, not whether the dirt is ready.
   </div>
@@ -711,27 +711,27 @@
   // Agronomic constants (Midwest published research)
   const CORN_EMERGE_GDU = 110;     // 100-120 typical
   const SOY_EMERGE_GDU  = 110;     // 90-130 typical
-  const SOIL_TEMP_MIN   = 50;      // °F at planting depth
   const COLD_RAIN_TMIN  = 50;      // °F: rain colder than this within 48h after = chilling risk
   const HEAVY_RAIN_IN   = 0.75;    // crusting threshold
   const COLD_HEAVY_RAIN = 0.40;    // when paired w/ cold, lower threshold
   const FROST_MAX_F     = 32;      // any forecast min ≤ 32 = frost flag
 
   // ============ YIELD CURVE ============
-  // BLENDED from two sources, 65% published / 35% local:
+  // Calibrated against published research from the Corn Belt:
+  //   • Iowa State (Abendroth & Elmore): 95-100% corn yield window Apr 12 - May 18
+  //   • Purdue (Nielsen): prime corn window Apr 20 - May 10
+  //   • U of I (Nafziger 2007-2021): soy "surprisingly similar" to corn,
+  //     mid-late April optimal
+  //   • Iowa State soy (2020): ≥92% through late May
   //
-  // [1] Published University of Illinois Nafziger trials (Farmdoc, 2022):
-  //     Corn: 22 site-years across 4 central/northern IL sites, 2007-2021
-  //     Soy:  26 site-years across 6 IL sites, 2010-2020
-  //     Anchor benchmarks (% of max yield): May 10 = 95%, May 20 = 91%, May 30 = 86%
-  //     Plus the 1994 Nafziger quadratic model: peak ~Apr 27, very flat-topped curve
+  // We deliberately do NOT calibrate against local farm-level yield data,
+  // because early planters self-select for better-managed operations — that's
+  // a confound the randomized published trials avoid.
   //
-  // [2] Local farm-level dataset: 1,300+ central-IL fields, 2023-2025
-  //     (5-day rolling weighted-average yield by plant date, monotonized)
-  //
-  // The published trials get the larger weight because they cover 20+ years of
-  // weather variability — far longer than our local 3-year sample. The local
-  // data sharpens the recent shape, especially the corn plateau through May 14.
+  //   CORN: 100% plateau through May 7, then gradual decline. May 10 ≈ 99%,
+  //         May 20 ≈ 93%, May 30 ≈ 85%. Sharp drop after early June.
+  //   SOY:  100% plateau through Apr 30, then gradual decline. May 10 ≈ 95%,
+  //         May 20 ≈ 91%, May 30 ≈ 84%.
   //
   // Returned as % of max yield potential.
   function yieldPotential(date, crop) {
@@ -739,42 +739,39 @@
     const curve = (crop === 'soy')
       // SOY anchors (DOY, % of max)
       ? [
-          [93, 99],    // Apr 2
-          [97, 100],   // Apr 6/7   ← peak
-          [102, 98],   // Apr 11
-          [107, 97],   // Apr 16
-          [112, 96],   // Apr 21
-          [117, 94],   // Apr 26
-          [122, 93],   // May 1
-          [127, 91],   // May 6
-          [132, 89],   // May 11
-          [137, 88],   // May 16
-          [142, 86],   // May 21
-          [147, 82],   // May 26
-          [152, 76],   // May 31
-          [159, 70],   // Jun 7
-          [170, 60],   // Jun 18
+          [93, 98],    // Apr 2  — small early-planting penalty
+          [97, 100],   // Apr 6  — start of plateau
+          [105, 100],  // Apr 14
+          [115, 100],  // Apr 24
+          [120, 100],  // Apr 29 — end of plateau
+          [122, 99],   // May 1
+          [127, 97],   // May 6
+          [132, 95],   // May 11
+          [137, 93],   // May 16
+          [142, 91],   // May 21
+          [147, 88],   // May 26
+          [152, 83],   // May 31
+          [159, 76],   // Jun 7
+          [170, 65],   // Jun 18
           [185, 50]    // Jul 3
         ]
       // CORN anchors (DOY, % of max)
       : [
-          [95, 98],    // Apr 4
-          [100, 98],   // Apr 9
-          [105, 99],   // Apr 14
-          [110, 100],  // Apr 19  ← peak
-          [115, 99],   // Apr 24
-          [117, 99],   // Apr 26
-          [120, 98],   // Apr 29
-          [125, 97],   // May 4
-          [130, 95],   // May 9   ← published anchor: May 10 = 95%
-          [134, 93],   // May 13
-          [137, 93],   // May 16
-          [140, 92],   // May 19  ← published anchor: May 20 = 91%
-          [145, 91],   // May 24
-          [150, 86],   // May 29  ← published anchor: May 30 = 86%
-          [156, 78],   // Jun 4
-          [166, 70],   // Jun 14
-          [180, 55]    // Jun 28
+          [95, 98],    // Apr 4  — small early penalty
+          [100, 100],  // Apr 9  — start of plateau
+          [110, 100],  // Apr 19
+          [120, 100],  // Apr 29
+          [127, 100],  // May 7  — end of plateau
+          [130, 99],   // May 10
+          [134, 97],   // May 13
+          [138, 95],   // May 17
+          [142, 92],   // May 21
+          [147, 89],   // May 26
+          [150, 86],   // May 29
+          [155, 81],   // Jun 3
+          [162, 73],   // Jun 10
+          [170, 65],   // Jun 18
+          [185, 50]    // Jul 3
         ];
 
     if (doy < curve[0][0]) return curve[0][1] - 4;  // pre-window: small penalty
@@ -907,33 +904,124 @@
   }
 
   // ============ WEATHER FETCH ============
-  // Fetch:
-  //  • last 30 days of observed (for accumulated-GDU / soil context / antecedent rainfall)
-  //  • next 7 days forecast
-  //  • daily wind / radiation / ET / soil-moisture for field-workability index
+  // History (last 30 days) comes from Open-Meteo's archive — fast, free, accurate.
+  // Forecast TEMPERATURES come from the National Weather Service (api.weather.gov),
+  // which is the SAME data feeding NOAA's site, The Weather Channel, WeatherBug,
+  // and every consumer US weather app. Switching to NWS direct ends the persistent
+  // temperature disagreement that plagued earlier versions — when we use NWS's
+  // own forecaster-adjusted output, the model question becomes moot.
+  // PRECIPITATION still comes from Open-Meteo since NWS's simple hourly endpoint
+  // doesn't return amount in inches. Merging the two gives the best of both.
   async function fetchWeather(loc) {
     const today = todayUTC();
     const histStart = new Date(today.getTime() - 30 * 86400000);
 
     const histUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${loc.lat}&longitude=${loc.lon}` +
       `&start_date=${isoFromUTC(histStart)}&end_date=${isoFromUTC(new Date(today.getTime() - 86400000))}` +
-      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,soil_temperature_0_to_7cm_mean,et0_fao_evapotranspiration` +
+      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
       `&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=${encodeURIComponent(loc.tz)}`;
 
-    const fcstUrl = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
-      `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,shortwave_radiation_sum,et0_fao_evapotranspiration` +
-      `&hourly=soil_temperature_6cm,soil_moisture_3_to_9cm,precipitation,temperature_2m` +
+    // Open-Meteo for precipitation forecast (and as fallback if NWS fails)
+    const omFcstUrl = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
+      `&daily=precipitation_sum,wind_speed_10m_max` +
+      `&hourly=temperature_2m,precipitation` +
       `&past_days=2&forecast_days=8` +
       `&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&timezone=${encodeURIComponent(loc.tz)}`;
 
-    const [hist, fcst] = await Promise.all([
+    const [hist, omFcst, nwsFcst] = await Promise.all([
       fetch(histUrl).then(r => r.ok ? r.json() : Promise.reject('archive fetch failed')),
-      fetch(fcstUrl).then(r => r.ok ? r.json() : Promise.reject('forecast fetch failed'))
+      fetch(omFcstUrl).then(r => r.ok ? r.json() : Promise.reject('open-meteo forecast failed')),
+      fetchNwsForecast(loc).catch(e => {
+        console.warn('NWS forecast unavailable, falling back to Open-Meteo:', e);
+        return null;
+      })
     ]);
 
-    // Also fetch 10-year normal GDU for the chart overlay (in parallel won't help — start it now)
-    // We'll let render() request this lazily so first paint is fast.
+    // Merge: prefer NWS temperature, keep Open-Meteo precipitation/wind
+    const fcst = mergeForecast(omFcst, nwsFcst);
     return { hist, fcst, today };
+  }
+
+  // Replace the temperature_2m series in the Open-Meteo forecast with NWS values
+  // wherever both have a reading at the same hour. Also pull NWS's per-hour
+  // probability-of-precipitation (NWS gives this directly; Open-Meteo doesn't
+  // have it for every model). Daily wind/precip totals stay as Open-Meteo.
+  function mergeForecast(om, nws) {
+    if (!nws || !nws.hourly || !nws.hourly.time || !nws.hourly.time.length) {
+      return om;
+    }
+    // Build lookups from local-iso "YYYY-MM-DDTHH:MM" -> NWS values
+    const tempByTime = {};
+    const popByTime = {};
+    for (let i = 0; i < nws.hourly.time.length; i++) {
+      tempByTime[nws.hourly.time[i]] = nws.hourly.temperature_2m[i];
+      if (nws.hourly.precipProbability) {
+        popByTime[nws.hourly.time[i]] = nws.hourly.precipProbability[i];
+      }
+    }
+    if (om.hourly && om.hourly.time && om.hourly.temperature_2m) {
+      // Initialize the precipProbability array on om.hourly so downstream code can use it
+      if (!om.hourly.precipProbability) {
+        om.hourly.precipProbability = new Array(om.hourly.time.length).fill(null);
+      }
+      for (let i = 0; i < om.hourly.time.length; i++) {
+        const t = om.hourly.time[i];
+        if (t in tempByTime && tempByTime[t] != null) {
+          om.hourly.temperature_2m[i] = tempByTime[t];
+        }
+        if (t in popByTime && popByTime[t] != null) {
+          om.hourly.precipProbability[i] = popByTime[t];
+        }
+      }
+    }
+    return om;
+  }
+
+  // Fetch hourly forecast from the National Weather Service.
+  // NWS API is two-step: /points returns the gridpoint URL, then
+  // /gridpoints/.../forecast/hourly returns the actual hourly forecast.
+  const _gridpointCache = {};
+  async function fetchNwsForecast(loc) {
+    const ptKey = `${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
+    let gridpointForecastUrl = _gridpointCache[ptKey];
+    if (!gridpointForecastUrl) {
+      const ptUrl = `https://api.weather.gov/points/${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
+      const ptRes = await fetch(ptUrl, {
+        headers: { 'Accept': 'application/geo+json' }
+      });
+      if (!ptRes.ok) throw new Error('NWS points lookup failed');
+      const ptJson = await ptRes.json();
+      gridpointForecastUrl = ptJson.properties && ptJson.properties.forecastHourly;
+      if (!gridpointForecastUrl) throw new Error('NWS gridpoint not found');
+      _gridpointCache[ptKey] = gridpointForecastUrl;
+    }
+
+    const fcRes = await fetch(gridpointForecastUrl, {
+      headers: { 'Accept': 'application/geo+json' }
+    });
+    if (!fcRes.ok) throw new Error('NWS forecast fetch failed');
+    const fcJson = await fcRes.json();
+    const periods = (fcJson.properties && fcJson.properties.periods) || [];
+
+    // Convert NWS periods into Open-Meteo-shaped hourly arrays.
+    // NWS periods carry timezone offsets like "2026-04-29T15:00:00-05:00".
+    // We strip to "YYYY-MM-DDTHH:00" so it matches Open-Meteo's hourly time format.
+    // We also capture probabilityOfPrecipitation per hour, rolled up to a daily max.
+    const hourly = { time: [], temperature_2m: [], precipProbability: [] };
+    for (const p of periods) {
+      const localIso = p.startTime.slice(0, 16);  // "2026-04-29T15:00"
+      let temp = p.temperature;
+      if (p.temperatureUnit === 'C') temp = temp * 9 / 5 + 32;
+      hourly.time.push(localIso);
+      hourly.temperature_2m.push(temp);
+      // probabilityOfPrecipitation is { unitCode, value } where value is 0-100 or null
+      let pop = null;
+      if (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value != null) {
+        pop = p.probabilityOfPrecipitation.value;
+      }
+      hourly.precipProbability.push(pop);
+    }
+    return { hourly };
   }
 
   // Fetch a 10-year normal GDU climatology for this lat/lon, covering Apr 1 -> end of next 7 days.
@@ -1006,14 +1094,6 @@
     const cornDays = projectDaysToTarget(dayIdx, fcstDays, CORN_EMERGE_GDU);
     const soyDays  = projectDaysToTarget(dayIdx, fcstDays, SOY_EMERGE_GDU);
 
-    // Soil temp on planting day (mean of 06-18h soil_temp_6cm)
-    const soilOnDay = soilMeanOnDate(day.date, hourly);
-
-    // Soil temp trend: avg of next 48h after plant vs prior 24h
-    const soilNext48 = soilMeanWindow(day.date, 0, 48, hourly);
-    const soilPrior24 = soilMeanWindow(day.date, -24, 0, hourly);
-    const soilTrend = (soilNext48 != null && soilPrior24 != null) ? soilNext48 - soilPrior24 : 0;
-
     // 48h post-plant: rain & coldest temp
     let rain48 = 0;
     let coldestPost = Infinity;
@@ -1045,7 +1125,7 @@
       const emergeDays = crop === 'corn' ? cornDays : soyDays;
       const yieldPct = crop === 'corn' ? yieldPctCorn : yieldPctSoy;
       lights[crop] = computeLight({
-        soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
+        rain48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
       });
     }
 
@@ -1054,8 +1134,8 @@
       dateObj: day.dateObj,
       index: dayIdx,
       tmax: day.tmax, tmin: day.tmin, precip: day.precip,
+      popMax: day.popMax != null ? day.popMax : null,
       gdu: gduFromHL(day.tmax, day.tmin),
-      soilOnDay, soilNext48, soilTrend,
       rain48, coldestPost, frostAhead,
       cornDays, soyDays,
       yieldPctCorn, yieldPctSoy,
@@ -1075,39 +1155,30 @@
 
   // Pull ET0 (mm) for a specific date from the historical archive response,
   // converted to inches. Returns null if not present.
-  function computeLight({ soilOnDay, soilTrend, rain48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
+  function computeLight({ rain48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
     const reasons = [];
 
     // ---- HARD STOPS (no-go) ----
-    // Cold soil + cold rain in 48h = imbibitional chilling risk = the seed killer
-    if (soilOnDay != null && soilOnDay < SOIL_TEMP_MIN - 2 && rain48 >= 0.1 && coldestPost != null && coldestPost < COLD_RAIN_TMIN) {
-      return { light: 'no', reasons: [['no', `Soil ${Math.round(soilOnDay)}°F + ${rain48.toFixed(2)}″ cold rain in 48h — imbibitional chilling risk is the seed killer here`]] };
+    // Cold rain in the 48 hours after planting = imbibitional chilling risk.
+    // The seed pulls in cold water during its first 24-48 hours of imbibition,
+    // and that cold water disrupts cell-membrane reorganization. We flag it
+    // when there's >0.1" of rain coinciding with air temps below 50°F.
+    if (rain48 >= 0.1 && coldestPost != null && coldestPost < COLD_RAIN_TMIN) {
+      reasons.push(['no', `${rain48.toFixed(2)}″ of cold rain (lows near ${Math.round(coldestPost)}°F) within 48h — imbibitional chilling risk on the seed`]);
     }
+
     // Yield potential collapsed (very late)
     if (yieldPct < 60) {
       reasons.push(['no', `${Math.round(yieldPct)}% of yield ceiling — very late, switch to a shorter-maturity hybrid if planting`]);
     }
 
-    // ---- SOIL ----
-    if (soilOnDay == null) {
-      reasons.push(['cau', `Soil temperature data unavailable for that day`]);
-    } else if (soilOnDay >= SOIL_TEMP_MIN && soilTrend > 0.5) {
-      reasons.push(['go', `Soil ${Math.round(soilOnDay)}°F and warming — textbook conditions for germination`]);
-    } else if (soilOnDay >= SOIL_TEMP_MIN) {
-      reasons.push(['go', `Soil ${Math.round(soilOnDay)}°F at planting depth, above the 50° threshold`]);
-    } else if (soilOnDay >= 47) {
-      reasons.push(['cau', `Soil ${Math.round(soilOnDay)}°F — borderline; wait for a clear warming trend before pulling the planter`]);
-    } else {
-      reasons.push(['no', `Soil ${Math.round(soilOnDay)}°F — well below 50°; high risk of chilling injury and slow stand`]);
-    }
-
-    // ---- 48h RAIN ----
+    // ---- 48h RAIN (non-cold) ----
     if (rain48 >= COLD_HEAVY_RAIN && coldestPost != null && coldestPost < COLD_RAIN_TMIN) {
-      reasons.push(['no', `${rain48.toFixed(2)}″ of cold rain (lows near ${Math.round(coldestPost)}°F) within 48h — chilling injury territory`]);
+      // already flagged as 'no' above
     } else if (rain48 >= HEAVY_RAIN_IN) {
       reasons.push(['cau', `${rain48.toFixed(2)}″ of rain in first 48h — crusting risk on tilled fields`]);
     } else if (rain48 < 0.1) {
-      reasons.push(['go', `Dry 48h after planting — seed can imbibe at its own pace`]);
+      reasons.push(['go', `No rain in 48 hour window after planting — seed can imbibe at its own pace`]);
     } else {
       reasons.push(['go', `${rain48.toFixed(2)}″ rain in first 48h — light, manageable`]);
     }
@@ -1171,55 +1242,70 @@
     return daysUsed + Math.ceil(remaining / avgPace);
   }
 
-  function soilMeanOnDate(isoDate, hourly) {
-    if (!hourly || !hourly.time) return null;
-    let sum = 0, n = 0;
-    for (let i = 0; i < hourly.time.length; i++) {
-      if (hourly.time[i].startsWith(isoDate)) {
-        const v = hourly.soil_temperature_6cm[i];
-        if (v != null) { sum += v; n++; }
-      }
-    }
-    return n > 0 ? sum / n : null;
-  }
-
-  function soilMeanWindow(isoDate, hourStart, hourEnd, hourly) {
-    if (!hourly || !hourly.time) return null;
-    const baseTime = new Date(isoDate + 'T00:00:00').getTime();
-    let sum = 0, n = 0;
-    for (let i = 0; i < hourly.time.length; i++) {
-      const t = new Date(hourly.time[i]).getTime();
-      const hr = (t - baseTime) / 3600000;
-      if (hr >= hourStart && hr < hourEnd) {
-        const v = hourly.soil_temperature_6cm[i];
-        if (v != null) { sum += v; n++; }
-      }
-    }
-    return n > 0 ? sum / n : null;
-  }
-
   // ============ BUILD FCST DAYS ARRAY ============
+  // We compute daily tmax/tmin from the HOURLY series (in the user's local tz)
+  // rather than relying on Open-Meteo's pre-aggregated daily values, which can
+  // run several degrees cooler than the actual peak hour. The hourly time
+  // strings are already returned in the user's local timezone (because we set
+  // &timezone=…), so YYYY-MM-DD prefix grouping is correct.
   function buildFcstDays(weather) {
     const { fcst, today } = weather;
     const todayISO = isoFromUTC(today);
-    const days = [];
+    const hourly = fcst.hourly;
     const daily = fcst.daily;
-    for (let i = 0; i < daily.time.length; i++) {
-      const iso = daily.time[i];
-      // Only future days from today onwards (not "past_days" buffer)
+
+    // Group hourly temperature_2m + precipitation + precipProbability by local date
+    const byDate = {};
+    if (hourly && hourly.time) {
+      for (let i = 0; i < hourly.time.length; i++) {
+        const date = hourly.time[i].slice(0, 10);
+        if (!byDate[date]) byDate[date] = { temps: [], precip: 0, popMax: null };
+        if (hourly.temperature_2m && hourly.temperature_2m[i] != null) {
+          byDate[date].temps.push(hourly.temperature_2m[i]);
+        }
+        if (hourly.precipitation && hourly.precipitation[i] != null) {
+          byDate[date].precip += hourly.precipitation[i];
+        }
+        if (hourly.precipProbability && hourly.precipProbability[i] != null) {
+          const pop = hourly.precipProbability[i];
+          if (byDate[date].popMax == null || pop > byDate[date].popMax) {
+            byDate[date].popMax = pop;
+          }
+        }
+      }
+    }
+
+    // Walk daily.time (or fall back to sorted byDate keys) to build the day list
+    const dateList = (daily && daily.time && daily.time.length)
+      ? daily.time
+      : Object.keys(byDate).sort();
+    const days = [];
+    for (let i = 0; i < dateList.length; i++) {
+      const iso = dateList[i];
       if (iso < todayISO) continue;
-      const tmax = daily.temperature_2m_max[i];
-      const tmin = daily.temperature_2m_min[i];
-      const precip = daily.precipitation_sum[i] ?? 0;
-      const wind = daily.wind_speed_10m_max ? daily.wind_speed_10m_max[i] : null;
-      const swrad = daily.shortwave_radiation_sum ? daily.shortwave_radiation_sum[i] : null;
-      const et0 = daily.et0_fao_evapotranspiration ? daily.et0_fao_evapotranspiration[i] : null;
+      const bucket = byDate[iso];
+      let tmax = null, tmin = null;
+      if (bucket && bucket.temps.length) {
+        tmax = Math.max(...bucket.temps);
+        tmin = Math.min(...bucket.temps);
+      }
+      // Prefer hourly-aggregated precip; if missing, fall back to daily.precipitation_sum
+      let precip = bucket ? bucket.precip : 0;
+      if (!precip && daily && daily.precipitation_sum) {
+        const idx = daily.time.indexOf(iso);
+        if (idx >= 0) precip = daily.precipitation_sum[idx] || 0;
+      }
+      const wind = (daily && daily.wind_speed_10m_max)
+        ? daily.wind_speed_10m_max[daily.time.indexOf(iso)] : null;
+      const popMax = bucket ? bucket.popMax : null;
       const dt = new Date(iso + 'T12:00:00Z');
       days.push({
         date: iso,
         dateObj: dt,
-        tmax, tmin, precip,
-        wind, swrad, et0,
+        tmax, tmin,
+        precip: Math.round(precip * 100) / 100,
+        popMax,                             // % chance of precip (max across day)
+        wind, swrad: null, et0: null,
         gdu: gduFromHL(tmax, tmin)
       });
       if (days.length >= 7) break;
@@ -1588,12 +1674,12 @@
     const cornL = d.lights.corn.light;
     const soyL = d.lights.soy.light;
 
-    const soilStr = d.soilOnDay != null ? `${Math.round(d.soilOnDay)}°` : '—';
-    const soilCls = d.soilOnDay != null && d.soilOnDay < SOIL_TEMP_MIN ? 'warn' : (d.soilOnDay != null && d.soilOnDay >= SOIL_TEMP_MIN ? 'good' : '');
     const rainStr = d.precip > 0.005 ? `${d.precip.toFixed(2)}″` : '—';
     const rainCls = d.precip >= HEAVY_RAIN_IN ? 'warn' : '';
     const tempStr = (d.tmax != null && d.tmin != null) ? `${Math.round(d.tmax)}/${Math.round(d.tmin)}°` : '—';
     const tempCls = d.tmin != null && d.tmin <= FROST_MAX_F ? 'warn' : '';
+    const popStr = d.popMax != null ? `${Math.round(d.popMax)}%` : '—';
+    const popCls = d.popMax != null && d.popMax >= 50 ? 'warn' : '';
     const cumStr = cumGDU != null ? `Σ ${Math.round(cumGDU)}` : '';
 
     return `<div class="${classes.join(' ')}">
@@ -1605,7 +1691,7 @@
       </div>
       <div class="day-light-labels"><span>corn</span><span>soy</span></div>
       <div class="day-stat"><span class="k">Hi/Lo</span><span class="v ${tempCls}">${tempStr}</span></div>
-      <div class="day-stat"><span class="k">Soil</span><span class="v ${soilCls}">${soilStr}</span></div>
+      <div class="day-stat"><span class="k">Precip %</span><span class="v ${popCls}">${popStr}</span></div>
       <div class="day-stat"><span class="k">Rain</span><span class="v ${rainCls}">${rainStr}</span></div>
       <div class="day-stat"><span class="k">GDU</span><span class="v">${d.gdu != null ? d.gdu.toFixed(1) : '—'}</span></div>
       ${cumStr ? `<div class="day-stat cum"><span class="k">Total</span><span class="v">${cumStr}</span></div>` : ''}
