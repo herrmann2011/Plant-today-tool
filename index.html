@@ -414,18 +414,13 @@
   .why-list li.cau .ico { color: var(--caution); }
   .why-list li.no .ico { color: var(--bad); }
 
-  /* Field-conditions disclaimer at the bottom of the today block */
+  /* Field-conditions disclaimer — plain bold text above today's date */
   .today-disclaimer {
-    margin-top: 18px;
-    padding: 10px 14px;
-    background: var(--bg-deep);
-    border-left: 3px solid var(--caution);
-    border-radius: 2px;
-    font-family: 'Fraunces', serif;
-    font-style: italic;
-    font-size: 0.85rem;
-    color: var(--ink-soft);
-    line-height: 1.5;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--ink);
+    margin-bottom: 10px;
   }
 
   /* HERO STATS — accumulated GDU & rainfall */
@@ -1474,6 +1469,7 @@
     html += `<section class="today-block">
       <div class="today-stripe ${overall}"></div>
       <div class="today-inner">
+        <div class="today-disclaimer">These recommendations are not considering field conditions.</div>
         <div class="today-eyebrow">${fmtLongDate(todayA.dateObj)} · today's call</div>
         <h2 class="today-headline ${overall}">${headlineMap[overall].text.replace(/—\s(\w+)/, (m, p) => `— <em>${p}</em>`)}</h2>
         <p class="today-summary">${refinedDetail}</p>
@@ -1484,8 +1480,6 @@
         </div>
 
         ${renderWhy(todayA)}
-
-        <div class="today-disclaimer">Field conditions not factored in — walk your fields before pulling the planter.</div>
       </div>
     </section>`;
 
