@@ -683,7 +683,7 @@
 
   <!-- FOOTNOTE -->
   <div class="footnote" id="footnote" style="display:none;">
-    <b>How this is calculated.</b> Forecast temperatures come directly from the National Weather Service via api.weather.gov — the same data that feeds NOAA's website, The Weather Channel, WeatherBug, and every other US weather app. Precipitation forecasts and historical weather come from Open-Meteo. The plant-date yield curve is calibrated against published Corn Belt research: <i>Iowa State (Abendroth & Elmore: 95-100% corn window Apr 12 - May 18), Purdue (Nielsen: prime corn window Apr 20 - May 10), University of Illinois (Nafziger 2007-2021)</i>, and <i>Iowa State soy (2020): ≥92% through late May</i>. Corn holds 100% of yield potential through May 7, then declines: ≈99% by May 10, ≈93% by May 20, ≈85% by May 30. Soybeans hold 100% through April 30, then decline: ≈97% by May 6, ≈91% by May 21. We deliberately do not weight against local farm-level yield data because early planters self-select for better-managed operations — that confound is not present in randomized published trials. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>.
+    <b>How this is calculated.</b> Forecast temperatures come directly from the National Weather Service via api.weather.gov — the same data that feeds NOAA's website, The Weather Channel, WeatherBug, and every other US weather app. Precipitation forecasts and historical weather come from Open-Meteo. The plant-date yield curve is calibrated against published Corn Belt research: <i>Iowa State (Abendroth & Elmore: 95-100% corn window Apr 12 - May 18), Purdue (Nielsen: prime corn window Apr 20 - May 10), University of Illinois (Nafziger 2007-2021)</i>, and <i>Iowa State soy (2020): ≥92% through late May</i>. Corn holds 100% of yield potential through May 7, then declines: ≈99% by May 10, ≈93% by May 20, ≈85% by May 30. Soybeans hold 100% through April 30, then decline: ≈97% by May 6, ≈91% by May 21. We deliberately do not weight against local farm-level yield data because early planters self-select for better-managed operations — that confound is not present in randomized published trials. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>. The 48-hour rain check looks at both the expected rainfall total <i>and</i> the peak chance-of-rain across the window — a forecast that averages dry but carries a ≥50% chance of showers gets demoted from "go" to "caution," because the expected-value total is probability-weighted and hides the scenario where rain actually hits freshly-planted seed.
     <br><br>
     <b>Field conditions are not factored into the recommendation.</b> Weather-based models can't reliably predict whether a particular field is fit to plant — soil type, drainage, tile, residue cover, slope, and recent foot/tire traffic all matter, and none of that is visible in a forecast. Walk your fields and trust your boots; this tool tells you whether the agronomic and calendar windows are open, not whether the dirt is ready.
   </div>
@@ -710,6 +710,8 @@
   const HEAVY_RAIN_IN   = 0.75;    // crusting threshold
   const COLD_HEAVY_RAIN = 0.40;    // when paired w/ cold, lower threshold
   const FROST_MAX_F     = 32;      // any forecast min ≤ 32 = frost flag
+  const RAIN_RISK_POP   = 50;      // % chance of precip in 48h that demotes a "go" to "caution"
+                                   // even if the expected daily total stays under 0.1"
 
   // ============ YIELD CURVE ============
   // Calibrated against published research from the Corn Belt:
@@ -1089,14 +1091,18 @@
     const cornDays = projectDaysToTarget(dayIdx, fcstDays, CORN_EMERGE_GDU);
     const soyDays  = projectDaysToTarget(dayIdx, fcstDays, SOY_EMERGE_GDU);
 
-    // 48h post-plant: rain & coldest temp
+    // 48h post-plant: rain & coldest temp & max precip probability
     let rain48 = 0;
     let coldestPost = Infinity;
+    let popMax48 = null;
     for (let i = 0; i < 2; i++) {
       const d = fcstDays[dayIdx + i];
       if (d) {
         rain48 += d.precip || 0;
         if (d.tmin != null) coldestPost = Math.min(coldestPost, d.tmin);
+        if (d.popMax != null && (popMax48 == null || d.popMax > popMax48)) {
+          popMax48 = d.popMax;
+        }
       }
     }
     if (coldestPost === Infinity) coldestPost = null;
@@ -1120,7 +1126,7 @@
       const emergeDays = crop === 'corn' ? cornDays : soyDays;
       const yieldPct = crop === 'corn' ? yieldPctCorn : yieldPctSoy;
       lights[crop] = computeLight({
-        rain48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
+        rain48, popMax48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
       });
     }
 
@@ -1131,7 +1137,7 @@
       tmax: day.tmax, tmin: day.tmin, precip: day.precip,
       popMax: day.popMax != null ? day.popMax : null,
       gdu: gduFromHL(day.tmax, day.tmin),
-      rain48, coldestPost, frostAhead,
+      rain48, popMax48, coldestPost, frostAhead,
       cornDays, soyDays,
       yieldPctCorn, yieldPctSoy,
       work,
@@ -1150,7 +1156,7 @@
 
   // Pull ET0 (mm) for a specific date from the historical archive response,
   // converted to inches. Returns null if not present.
-  function computeLight({ rain48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
+  function computeLight({ rain48, popMax48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
     const reasons = [];
 
     // ---- HARD STOPS (no-go) ----
@@ -1168,12 +1174,31 @@
     }
 
     // ---- 48h RAIN (non-cold) ----
-    if (rain48 >= COLD_HEAVY_RAIN && coldestPost != null && coldestPost < COLD_RAIN_TMIN) {
+    // We branch on two signals: the expected rainfall total (rain48) and the
+    // peak chance-of-rain across the 48h window (popMax48). The expected total
+    // is probability-weighted by the forecast model — a 50% chance of 0.2"
+    // shows up as ~0.10" of expected rain — so a low rain48 with a high POP
+    // means "probably dry, but a real coin-flip on getting wet." That's not
+    // the same as "no rain expected," and we treat it differently.
+    const popHigh = popMax48 != null && popMax48 >= RAIN_RISK_POP;
+    const coldRiskLooming = coldestPost != null && coldestPost < COLD_RAIN_TMIN;
+
+    if (rain48 >= COLD_HEAVY_RAIN && coldRiskLooming) {
       // already flagged as 'no' above
     } else if (rain48 >= HEAVY_RAIN_IN) {
       reasons.push(['cau', `${rain48.toFixed(2)}″ of rain in first 48h — crusting risk on tilled fields`]);
+    } else if (rain48 < 0.1 && popHigh && coldRiskLooming) {
+      // Dry on average, but a real shot at rain AND lows under 50°F. The
+      // expected value hides the chilling-risk scenario. Don't go today.
+      reasons.push(['cau', `Only trace rain expected, but a ${Math.round(popMax48)}% chance of showers paired with lows near ${Math.round(coldestPost)}°F — if rain hits, the seed imbibes cold water`]);
+    } else if (rain48 < 0.1 && popHigh) {
+      // Dry on average, but a real shot at rain. Demote the easy "go" to caution
+      // and tell the operator what the weighted forecast actually means.
+      reasons.push(['cau', `Forecast averages to a dry 48h, but a ${Math.round(popMax48)}% chance of showers means a real possibility of rain on freshly-planted seed — judgment call`]);
     } else if (rain48 < 0.1) {
-      reasons.push(['go', `No rain in 48 hour window after planting — seed can imbibe at its own pace`]);
+      // Truly dry — low expected rain AND low chance of showers. Best case for
+      // the seed: it imbibes at field-moisture pace without a cold-water shock.
+      reasons.push(['go', `Next 48h forecast dry${popMax48 != null ? ` (peak chance of rain ${Math.round(popMax48)}%)` : ''} — seed can imbibe at its own pace from soil moisture, no chilling risk`]);
     } else {
       reasons.push(['go', `${rain48.toFixed(2)}″ rain in first 48h — light, manageable`]);
     }
