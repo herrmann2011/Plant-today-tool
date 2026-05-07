@@ -153,6 +153,77 @@
   }
   .controls button:hover { background: var(--accent); }
 
+  /* SOIL TEMP STRIP */
+  .soil-strip {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding-left: 20px;
+    border-left: 1px solid var(--line);
+  }
+  .soil-strip .soil-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .soil-strip .soil-reading {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .soil-strip .soil-temp {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 1.9rem;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+  .soil-strip .soil-temp.cold  { color: var(--bad); }
+  .soil-strip .soil-temp.risky { color: var(--caution); }
+  .soil-strip .soil-temp.good  { color: var(--good-deep); }
+  .soil-strip .soil-temp.na    { color: var(--ink-faint); font-size: 1.1rem; font-style: italic; font-weight: 400; }
+  .soil-strip .soil-interp {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    line-height: 1.4;
+  }
+  .soil-strip .soil-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
+  .soil-strip .soil-dot.cold  { background: var(--bad); }
+  .soil-strip .soil-dot.risky { background: var(--caution); }
+  .soil-strip .soil-dot.good  { background: var(--good); }
+  .soil-strip .soil-age {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.58rem;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  @media (max-width: 700px) {
+    .soil-strip {
+      margin-left: 0;
+      padding-left: 0;
+      border-left: none;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+  }
+
   /* TODAY VERDICT — the hero */
   .today-block {
     background: var(--paper);
@@ -674,6 +745,18 @@
       <input type="text" id="state-input" placeholder="IL" value="IL" maxlength="20">
     </div>
     <button id="apply-loc" type="button">Set</button>
+
+    <!-- SOIL TEMP STRIP — live from HIA Home via Cloudflare Worker -->
+    <div class="soil-strip">
+      <div class="soil-label">2" Soil Temp · HIA Home</div>
+      <div class="soil-reading">
+        <div class="soil-temp na" id="soil-temp-val">—</div>
+        <div>
+          <div class="soil-interp" id="soil-temp-interp"><span class="soil-dot" id="soil-dot"></span><span id="soil-interp-text">Loading…</span></div>
+          <div class="soil-age" id="soil-temp-age"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- OUTPUT -->
@@ -1916,6 +1999,63 @@
   stateInputEl.addEventListener('keydown', e => {
     if (e.key === 'Enter') applyLocBtn.click();
   });
+
+  // ============ SOIL TEMP — HIA Home via Cloudflare Worker ============
+  const SOIL_WORKER_URL = 'https://soil-proxy.andrewherrmann.workers.dev/';
+  const SOIL_REFRESH_MS = 5 * 60 * 1000; // refresh every 5 minutes
+
+  const soilTempEl   = document.getElementById('soil-temp-val');
+  const soilDotEl    = document.getElementById('soil-dot');
+  const soilInterpEl = document.getElementById('soil-interp-text');
+  const soilAgeEl    = document.getElementById('soil-temp-age');
+
+  function soilTempClass(f) {
+    if (f === null) return 'na';
+    if (f <= 50)  return 'cold';
+    if (f <= 55)  return 'risky';
+    return 'good';
+  }
+  function soilTempInterp(f) {
+    if (f === null) return 'No reading';
+    if (f <= 50)  return 'Planting not Recommended';
+    if (f <= 55)  return 'Not Ideal';
+    return 'Good to Plant';
+  }
+  function soilFmtAge(ts) {
+    if (!ts) return '';
+    const ageS = Math.floor(Date.now() / 1000 - ts);
+    if (ageS < 60)   return `Updated ${ageS}s ago`;
+    if (ageS < 3600) return `Updated ${Math.floor(ageS / 60)}m ago`;
+    return `Updated ${Math.floor(ageS / 3600)}h ago`;
+  }
+
+  async function fetchSoilTemp() {
+    try {
+      const res = await fetch(SOIL_WORKER_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const f = (typeof data.tempF === 'number') ? data.tempF : null;
+      const cls = soilTempClass(f);
+
+      // Remove all color classes then apply current one
+      soilTempEl.className = 'soil-temp ' + cls;
+      soilDotEl.className  = 'soil-dot ' + cls;
+
+      soilTempEl.textContent   = f !== null ? `${f.toFixed(1)}°F` : '—';
+      soilInterpEl.textContent = soilTempInterp(f);
+      soilAgeEl.textContent    = soilFmtAge(data.ts);
+    } catch (e) {
+      soilTempEl.className     = 'soil-temp na';
+      soilTempEl.textContent   = '—';
+      soilInterpEl.textContent = 'Station offline';
+      soilAgeEl.textContent    = '';
+      console.warn('Soil temp fetch failed:', e.message);
+    }
+  }
+
+  // Initial fetch + refresh timer
+  fetchSoilTemp();
+  setInterval(fetchSoilTemp, SOIL_REFRESH_MS);
 
   // initial load
   load();
