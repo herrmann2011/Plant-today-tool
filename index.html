@@ -361,6 +361,36 @@
     color: var(--ink-faint);
     margin-left: auto;
   }
+  .section-head .head-legend {
+    margin-left: auto;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    align-items: center;
+  }
+  .section-head .head-legend .lg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-head .head-legend .lg-swatch {
+    display: inline-block;
+    width: 18px;
+    height: 6px;
+    border-radius: 1px;
+  }
+  .section-head .head-legend .lg-swatch.go { background: var(--good); }
+  .section-head .head-legend .lg-swatch.cau { background: var(--caution); }
+  .section-head .head-legend .lg-swatch.no { background: var(--bad); }
+  @media (max-width: 720px) {
+    .section-head .head-legend { gap: 10px; font-size: 0.58rem; }
+    .section-head .head-legend .lg-swatch { width: 14px; }
+  }
 
   /* WEEK CARDS */
   .week-strip {
@@ -546,78 +576,6 @@
   .stat.fcst-gdu .value { color: var(--accent); }
   .stat.fcst-rain .value { color: var(--rain-fcst); }
 
-  /* YIELD WINDOW BAR */
-  .window-bar {
-    background: var(--paper);
-    border: 1px solid var(--line);
-    padding: 16px 20px;
-    border-radius: 2px;
-    margin-bottom: 28px;
-  }
-  .wb-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 10px;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .wb-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-  }
-  .wb-value {
-    font-family: 'Fraunces', serif;
-    font-size: 1rem;
-    color: var(--ink-soft);
-  }
-  .wb-value b {
-    font-family: 'Fraunces', serif;
-    font-weight: 700;
-    color: var(--ink);
-    font-size: 1.15rem;
-  }
-  .wb-track {
-    height: 16px;
-    background: linear-gradient(90deg,
-      var(--good) 0%,
-      var(--good) 55%,
-      #b6c590 65%,
-      var(--caution) 80%,
-      var(--bad) 100%);
-    border-radius: 1px;
-    position: relative;
-    margin-bottom: 6px;
-  }
-  .wb-marker {
-    position: absolute;
-    top: -4px; bottom: -4px;
-    width: 3px;
-    background: var(--ink);
-    box-shadow: 0 0 0 1.5px var(--paper);
-    transform: translateX(-1.5px);
-  }
-  .wb-marker-corn { background: var(--corn-deep); }
-  .wb-marker-soy { background: var(--soy-deep); }
-  .wb-cropchip {
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    margin-right: 4px;
-    vertical-align: middle;
-  }
-  .wb-axis {
-    display: flex;
-    justify-content: space-between;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--ink-faint);
-    letter-spacing: 0.05em;
-  }
-
   /* SEASON-TO-DATE CHART */
   .chart-wrap {
     background: var(--paper);
@@ -748,7 +706,7 @@
 
     <!-- SOIL TEMP STRIP — live from HIA Home via Cloudflare Worker -->
     <div class="soil-strip">
-      <div class="soil-label">2" Soil Temp · HIA Home</div>
+      <div class="soil-label">2" Bare Soil Temp · HIA Home</div>
       <div class="soil-reading">
         <div class="soil-temp na" id="soil-temp-val">—</div>
         <div>
@@ -766,7 +724,7 @@
 
   <!-- FOOTNOTE -->
   <div class="footnote" id="footnote" style="display:none;">
-    <b>How this is calculated.</b> Forecast temperatures come directly from the National Weather Service via api.weather.gov — the same data that feeds NOAA's website, The Weather Channel, WeatherBug, and every other US weather app. Precipitation forecasts and historical weather come from Open-Meteo. The plant-date yield curve is calibrated against published Corn Belt research: <i>Iowa State (Abendroth & Elmore: 95-100% corn window Apr 12 - May 18), Purdue (Nielsen: prime corn window Apr 20 - May 10), University of Illinois (Nafziger 2007-2021)</i>, and <i>Iowa State soy (2020): ≥92% through late May</i>. Corn holds 100% of yield potential through May 7, then declines: ≈99% by May 10, ≈93% by May 20, ≈85% by May 30. Soybeans hold 100% through April 30, then decline: ≈97% by May 6, ≈91% by May 21. We deliberately do not weight against local farm-level yield data because early planters self-select for better-managed operations — that confound is not present in randomized published trials. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>. The 48-hour rain check looks at both the expected rainfall total <i>and</i> the peak chance-of-rain across the window — a forecast that averages dry but carries a ≥50% chance of showers gets demoted from "go" to "caution," because the expected-value total is probability-weighted and hides the scenario where rain actually hits freshly-planted seed.
+    <b>How this is calculated.</b> Forecast temperatures come directly from the National Weather Service via api.weather.gov — the same data that feeds NOAA's website, The Weather Channel, WeatherBug, and every other US weather app. Precipitation forecasts and historical weather come from Open-Meteo. The plant-date yield curve is calibrated against published Corn Belt research: <i>Iowa State (Abendroth & Elmore: 95-100% corn window Apr 12 - May 18), Purdue (Nielsen: prime corn window Apr 20 - May 10), University of Illinois (Nafziger 2007-2021)</i>, and <i>Iowa State soy (2020): ≥92% through late May</i>. Corn holds 100% of yield potential through May 7, then declines: ≈99% by May 10, ≈93% by May 20, ≈85% by May 30. Soybeans hold 100% through April 30, then decline: ≈97% by May 6, ≈91% by May 21. We deliberately do not weight against local farm-level yield data because early planters self-select for better-managed operations — that confound is not present in randomized published trials. GDU uses base 50 °F / cap 86 °F. The 10-year normal GDU line is an average of the previous ten years' GDU accumulation at this exact lat/lon (Open-Meteo archive). The decision logic blends three things: <i>where you are on the yield-potential calendar</i>, <i>whether the next 48 hours protect the seed</i>, and <i>how fast the heat will pull the crop out of the ground</i>. The 48-hour rain check looks at both the expected rainfall total <i>and</i> the peak chance-of-rain across the window — a forecast that averages dry but carries a ≥50% chance of showers gets demoted from "go" to "caution," because the expected-value total is probability-weighted and hides the scenario where rain actually hits freshly-planted seed. Cold-rain risk uses the minimum air temperature <i>during the actual rain window</i> (every rainy hour expanded by three hours before and four after), not the overnight low — a 4 AM low has nothing to do with a 7 PM shower. Severity is tiered by the rain amount in that cold window: ≥ 0.20″ with temps below 50 °F is a hard stop (Hold), ≥ 0.10″ is a judgment-call caution (Mixed), and less than 0.10″ doesn't trip the rule.
     <br><br>
     <b>Field conditions are not factored into the recommendation.</b> Weather-based models can't reliably predict whether a particular field is fit to plant — soil type, drainage, tile, residue cover, slope, and recent foot/tire traffic all matter, and none of that is visible in a forecast. Walk your fields and trust your boots; this tool tells you whether the agronomic and calendar windows are open, not whether the dirt is ready.
   </div>
@@ -791,7 +749,6 @@
   const SOY_EMERGE_GDU  = 110;     // 90-130 typical
   const COLD_RAIN_TMIN  = 50;      // °F: rain colder than this within 48h after = chilling risk
   const HEAVY_RAIN_IN   = 0.75;    // crusting threshold
-  const COLD_HEAVY_RAIN = 0.40;    // when paired w/ cold, lower threshold
   const FROST_MAX_F     = 32;      // any forecast min ≤ 32 = frost flag
   const RAIN_RISK_POP   = 50;      // % chance of precip in 48h that demotes a "go" to "caution"
                                    // even if the expected daily total stays under 0.1"
@@ -1165,6 +1122,62 @@
   //   - Yield potential (calendar)
   //   - Frost risk in next 14 days for early seedlings
   // Then combine into a light: go / cau / no
+
+  // Find the minimum air temperature during the actual rain window in the 48h
+  // after the start date. Rather than using the overnight low (which often
+  // happens hours before or after any rain falls), we look at the hours where
+  // precipitation is forecast and expand each rainy hour by 3 hours before and
+  // 4 hours after, then take the minimum temperature across that union of hours.
+  // This captures both the temperature when the rain is actually hitting the
+  // ground AND the cooling/warming on either side of the event, while ignoring
+  // a 4 AM low that has nothing to do with a 7 PM shower.
+  // Returns null if no rainy hours are found in the window or hourly data is missing.
+  function rainWindowMinTemp(hourly, startISO) {
+    if (!hourly || !hourly.time || !hourly.temperature_2m || !hourly.precipitation) return null;
+    // Window: start of startISO date, +48 hours
+    // hourly.time entries are local-iso "YYYY-MM-DDTHH:MM"
+    const startDay = startISO; // "YYYY-MM-DD"
+    // next day's iso date string
+    const startD = new Date(`${startISO}T12:00:00Z`);
+    const nextD = new Date(startD.getTime() + 86400000);
+    const nextDay = isoFromUTC(nextD);
+
+    // Indices of hours in the 48h window (the start day + the next day)
+    const windowIdx = [];
+    for (let i = 0; i < hourly.time.length; i++) {
+      const t = hourly.time[i];
+      if (t.startsWith(startDay) || t.startsWith(nextDay)) {
+        windowIdx.push(i);
+      }
+    }
+    if (!windowIdx.length) return null;
+
+    // Find rainy hours within the window (precip > a small threshold to ignore
+    // model noise / trace amounts that round to 0.00")
+    const RAIN_HOUR_MIN = 0.005; // ~0.005" per hour = anything beyond noise
+    const rainyIdx = windowIdx.filter(i =>
+      hourly.precipitation[i] != null && hourly.precipitation[i] > RAIN_HOUR_MIN
+    );
+    if (!rainyIdx.length) return null;
+
+    // Expand each rainy hour by [-3, +4] within the 48h window, take union
+    const includedSet = new Set();
+    const winStart = windowIdx[0];
+    const winEnd = windowIdx[windowIdx.length - 1];
+    for (const r of rainyIdx) {
+      const lo = Math.max(winStart, r - 3);
+      const hi = Math.min(winEnd, r + 4);
+      for (let k = lo; k <= hi; k++) includedSet.add(k);
+    }
+
+    let minT = Infinity;
+    for (const k of includedSet) {
+      const t = hourly.temperature_2m[k];
+      if (t != null && t < minT) minT = t;
+    }
+    return minT === Infinity ? null : minT;
+  }
+
   function analyzeDay(dayIdx, fcstDays, hourly, today, histDays, weather) {
     const day = fcstDays[dayIdx];
     if (!day || day.tmax == null || day.tmin == null) return null;
@@ -1190,6 +1203,10 @@
     }
     if (coldestPost === Infinity) coldestPost = null;
 
+    // Cold-rain trigger: minimum air temp during the *actual rain window*
+    // (rainy hours ±3/+4) rather than the overnight low. See rainWindowMinTemp().
+    const rainWindowTmin = rainWindowMinTemp(hourly, day.date);
+
     // Frost in next 10 days (post-emergence concern)
     let frostAhead = false;
     for (let i = 1; i < Math.min(10, fcstDays.length - dayIdx); i++) {
@@ -1209,7 +1226,7 @@
       const emergeDays = crop === 'corn' ? cornDays : soyDays;
       const yieldPct = crop === 'corn' ? yieldPctCorn : yieldPctSoy;
       lights[crop] = computeLight({
-        rain48, popMax48, coldestPost, emergeDays, yieldPct, frostAhead, day, crop, work
+        rain48, popMax48, coldestPost, rainWindowTmin, emergeDays, yieldPct, frostAhead, day, crop, work
       });
     }
 
@@ -1239,16 +1256,30 @@
 
   // Pull ET0 (mm) for a specific date from the historical archive response,
   // converted to inches. Returns null if not present.
-  function computeLight({ rain48, popMax48, coldestPost, emergeDays, yieldPct, frostAhead, crop, work }) {
+  function computeLight({ rain48, popMax48, coldestPost, rainWindowTmin, emergeDays, yieldPct, frostAhead, crop, work }) {
     const reasons = [];
+
+    // Temperature used for cold-rain reasoning. Prefer the minimum air temp
+    // during the actual rain window (rainy hours ±3/+4); fall back to the 48h
+    // overnight low only if we have no hourly data and rain is forecast.
+    const cwTemp = (rainWindowTmin != null) ? rainWindowTmin : coldestPost;
+    const coldRiskInWindow = cwTemp != null && cwTemp < COLD_RAIN_TMIN;
 
     // ---- HARD STOPS (no-go) ----
     // Cold rain in the 48 hours after planting = imbibitional chilling risk.
     // The seed pulls in cold water during its first 24-48 hours of imbibition,
-    // and that cold water disrupts cell-membrane reorganization. We flag it
-    // when there's >0.1" of rain coinciding with air temps below 50°F.
-    if (rain48 >= 0.1 && coldestPost != null && coldestPost < COLD_RAIN_TMIN) {
-      reasons.push(['no', `${rain48.toFixed(2)}″ of cold rain (lows near ${Math.round(coldestPost)}°F) within 48h — imbibitional chilling risk on the seed`]);
+    // and that cold water disrupts cell-membrane reorganization. Severity is
+    // tiered by the rain amount in the cold window:
+    //   ≥ 0.20" with cold rain → hard stop (Hold) — meaningful cold-water dose
+    //   ≥ 0.10" with cold rain → caution (Mixed) — light cold rain, judgment call
+    //   < 0.10"                → no flag from this rule
+    let coldRainFlagged = false;
+    if (coldRiskInWindow && rain48 >= 0.20) {
+      reasons.push(['no', `${rain48.toFixed(2)}″ of cold rain (temps near ${Math.round(cwTemp)}°F during the rain window) within 48h — imbibitional chilling risk on the seed`]);
+      coldRainFlagged = true;
+    } else if (coldRiskInWindow && rain48 >= 0.10) {
+      reasons.push(['cau', `${rain48.toFixed(2)}″ of light rain falling into ${Math.round(cwTemp)}°F air within 48h — borderline cold-imbibition risk, judgment call`]);
+      coldRainFlagged = true;
     }
 
     // Yield potential collapsed (very late)
@@ -1264,16 +1295,15 @@
     // means "probably dry, but a real coin-flip on getting wet." That's not
     // the same as "no rain expected," and we treat it differently.
     const popHigh = popMax48 != null && popMax48 >= RAIN_RISK_POP;
-    const coldRiskLooming = coldestPost != null && coldestPost < COLD_RAIN_TMIN;
 
-    if (rain48 >= COLD_HEAVY_RAIN && coldRiskLooming) {
-      // already flagged as 'no' above
+    if (coldRainFlagged) {
+      // already covered above — don't double-flag
     } else if (rain48 >= HEAVY_RAIN_IN) {
       reasons.push(['cau', `${rain48.toFixed(2)}″ of rain in first 48h — crusting risk on tilled fields`]);
-    } else if (rain48 < 0.1 && popHigh && coldRiskLooming) {
-      // Dry on average, but a real shot at rain AND lows under 50°F. The
-      // expected value hides the chilling-risk scenario. Don't go today.
-      reasons.push(['cau', `Only trace rain expected, but a ${Math.round(popMax48)}% chance of showers paired with lows near ${Math.round(coldestPost)}°F — if rain hits, the seed imbibes cold water`]);
+    } else if (rain48 < 0.1 && popHigh && coldRiskInWindow) {
+      // Dry on average, but a real shot at rain AND temps under 50°F when it'd fall.
+      // The expected value hides the chilling-risk scenario. Don't go today.
+      reasons.push(['cau', `Only trace rain expected, but a ${Math.round(popMax48)}% chance of showers paired with temps near ${Math.round(cwTemp)}°F — if rain hits, the seed imbibes cold water`]);
     } else if (rain48 < 0.1 && popHigh) {
       // Dry on average, but a real shot at rain. Demote the easy "go" to caution
       // and tell the operator what the weighted forecast actually means.
@@ -1631,16 +1661,15 @@
       </div>
     </div>`;
 
-    // ----- WINDOW BAR -----
-    const yC = todayA.yieldPctCorn;
-    const yS = todayA.yieldPctSoy;
-    html += renderWindowBar(todayA.dateObj, yC, yS);
-
     // ----- WEEK STRIP -----
     html += `<div class="section-head">
       <span class="num">02</span>
       <h2>Week ahead</h2>
-      <span class="sub">Best day for each crop</span>
+      <span class="head-legend">
+        <span class="lg-item"><span class="lg-swatch go"></span>Go</span>
+        <span class="lg-item"><span class="lg-swatch cau"></span>Mixed</span>
+        <span class="lg-item"><span class="lg-swatch no"></span>Hold</span>
+      </span>
     </div>`;
     html += '<div class="week-strip">';
     for (let i = 0; i < analysis.length; i++) {
@@ -1743,28 +1772,6 @@
     }
     h += '</ul></div>';
     return h;
-  }
-
-  function renderWindowBar(dateObj, yC, yS) {
-    const fillC = Math.max(0, Math.min(100, yC));
-    const fillS = Math.max(0, Math.min(100, yS));
-    return `<div class="window-bar">
-      <div class="wb-head">
-        <div class="wb-title">Yield-potential calendar · ${fmtShortDate(dateObj)}</div>
-        <div class="wb-value"><span class="wb-cropchip" style="background:var(--corn);"></span>Corn <b>${Math.round(yC)}%</b> · <span class="wb-cropchip" style="background:var(--soy);"></span>Soy <b>${Math.round(yS)}%</b> of max</div>
-      </div>
-      <div class="wb-track">
-        <div class="wb-marker wb-marker-corn" style="left:${fillC}%;" title="Corn ${Math.round(yC)}%"></div>
-        <div class="wb-marker wb-marker-soy" style="left:${fillS}%;" title="Soy ${Math.round(yS)}%"></div>
-      </div>
-      <div class="wb-axis">
-        <span>peak · 100%</span>
-        <span>95%</span>
-        <span>plateau · 90%</span>
-        <span>penalty · 80%</span>
-        <span>late · 60%</span>
-      </div>
-    </div>`;
   }
 
   function renderDayCard(d, idx, bestCorn, bestSoy, cumGDU) {
